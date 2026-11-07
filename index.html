@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradeFX — Plataforma RFQ</title>
+<meta name="description" content="Flujo request-for-quote para FX: solicitud de cotizaciones, comparación de precios y captura de operaciones, integrada al blotter de la suite.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E14;--bg-2:#0E141D;--panel:#121A24;--panel-2:#16202C;
+  --grid:#1E2733;--grid-2:#2A3542;--text:#E7ECF3;--muted:#8A95A4;--faint:#56616F;
+  --signal:#2FD9E8;--signal-hi:#8CEFF6;--signal-dim:#1F9DAC;--steel:#5A6775;
+  --up:#34D399;--down:#F2574C;
+  --display:"Archivo",system-ui,sans-serif;--body:"IBM Plex Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --wrap:64rem;--gut:clamp(16px,4vw,40px);color-scheme:dark;
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:17px;line-height:1.62;
+  -webkit-font-smoothing:antialiased;background-image:radial-gradient(1000px 520px at 82% -10%, rgba(47,217,232,.10), transparent 62%)}
+h1,h2,h3{font-family:var(--display);font-weight:700;line-height:1.08;margin:0;text-wrap:balance;letter-spacing:-.015em}
+p{margin:0}a{color:inherit;text-decoration:none}
+.wrap{width:100%;max-width:var(--wrap);margin-inline:auto;padding-inline:var(--gut)}
+.band{border-top:1px solid var(--grid)}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--signal);margin-bottom:1.1rem}
+.muted{color:var(--muted)}.sig{color:var(--signal)}.mono{font-family:var(--mono)}
+.ticker{border-bottom:1px solid var(--grid);background:var(--bg-2)}
+.ticker .row{display:flex;gap:1.8rem;padding:.5rem 0;font-family:var(--mono);font-size:.7rem;color:var(--muted);flex-wrap:wrap;letter-spacing:.02em}
+.ticker b{color:var(--text);font-weight:500}.ticker .up{color:var(--up)}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;padding-block:1.1rem;gap:1rem;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:.6rem}
+.brand svg{width:28px;height:28px;flex:0 0 auto}
+.brand .nm{font-family:var(--display);font-weight:800;font-size:1.25rem;letter-spacing:-.01em}
+.brand .nm .op{color:var(--signal)}
+.apps{display:flex;align-items:center;gap:1.3rem;font-family:var(--mono);font-size:.72rem;letter-spacing:.1em;text-transform:uppercase}
+.apps .here{color:var(--signal);position:relative}
+.apps .here::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;background:var(--signal);opacity:.45}
+.apps a{color:var(--muted);transition:color .15s;display:inline-flex;align-items:center;gap:.2rem}
+.apps a:hover{color:var(--text)}
+.apps .ext{color:var(--signal);font-size:.78em;transform:translateY(-1px)}
+@media(max-width:560px){.apps{gap:.95rem;font-size:.66rem}}
+.hero .wrap{padding-block:clamp(3rem,8vw,5.5rem) clamp(2.5rem,6vw,4rem)}
+.hero h1{font-size:clamp(2.2rem,6vw,3.7rem);max-width:17ch;letter-spacing:-.02em}
+.hero h1 em{font-style:normal;color:var(--signal)}
+.hero .lede{color:var(--muted);font-size:clamp(1.05rem,2.2vw,1.22rem);max-width:56ch;margin-top:1.5rem}
+.status{display:inline-flex;align-items:center;gap:.6rem;margin-top:1.3rem;font-family:var(--mono);
+  font-size:.74rem;letter-spacing:.1em;text-transform:uppercase;color:var(--signal-hi);
+  border:1px solid var(--signal-dim);border-radius:999px;padding:.45rem 1rem}
+.status .pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);box-shadow:0 0 0 0 rgba(47,217,232,.6);animation:pulse 2.2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,217,232,.5)}70%{box-shadow:0 0 0 9px rgba(47,217,232,0)}100%{box-shadow:0 0 0 0 rgba(47,217,232,0)}}
+.actions{display:flex;flex-wrap:wrap;gap:1rem 1.1rem;align-items:center;margin-top:2rem}
+.btn{display:inline-flex;align-items:center;gap:.55rem;background:var(--signal);color:#06212a;font-family:var(--display);
+  font-weight:700;font-size:1rem;border:0;border-radius:4px;padding:.8rem 1.35rem;cursor:pointer;transition:filter .15s,transform .15s}
+.btn:hover{filter:brightness(1.08);transform:translateY(-1px)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--grid-2);padding:.8rem 1.15rem}
+.btn.ghost:hover{color:var(--signal);border-color:var(--signal-dim)}
+.arr{transition:transform .15s}.btn:hover .arr{transform:translateX(3px)}
+.method .wrap{padding-block:clamp(2.6rem,6vw,4rem)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.5rem}
+@media(max-width:780px){.grid3{grid-template-columns:1fr}}
+.item{background:var(--panel);border:1px solid var(--grid);border-radius:8px;padding:1.4rem 1.3rem}
+.item .num{font-family:var(--mono);font-size:.74rem;color:var(--signal);letter-spacing:.1em}
+.item h3{font-size:1.12rem;margin-top:.7rem}
+.item p{color:var(--muted);font-size:.93rem;margin-top:.5rem}
+.item .tag{font-family:var(--mono);font-size:.62rem;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;margin-top:.85rem}
+.feat .wrap{padding-block:clamp(2.6rem,6vw,4rem);display:grid;grid-template-columns:.95fr 1.05fr;gap:2.6rem;align-items:center}
+@media(max-width:780px){.feat .wrap{grid-template-columns:1fr;gap:1.4rem}}
+.feat h2{font-size:clamp(1.5rem,3.4vw,2.1rem);max-width:17ch}
+.feat .lede2{color:var(--muted);font-size:1.03rem;margin-top:1rem}
+.panel{background:var(--panel);border:1px solid var(--grid-2);border-radius:10px;padding:1.3rem;box-shadow:0 24px 50px -30px rgba(0,0,0,.8)}
+.panel .lbl{font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.panel .r{display:flex;justify-content:space-between;align-items:baseline;padding:.5rem 0;border-top:1px solid var(--grid);font-family:var(--mono);font-size:.86rem}
+.panel .r:first-of-type{border-top:0}
+.panel .r .m{color:var(--muted)}.panel .r .v{color:var(--text);font-variant-numeric:tabular-nums}
+.panel .r .v.dn{color:var(--down)}.panel .r .v.up{color:var(--up)}.panel .r .v.sig{color:var(--signal)}.panel .r .v.m{color:var(--muted)}
+.suite .wrap{padding-block:clamp(2.6rem,6vw,4rem)}
+.grid5{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:.8rem;margin-top:1.4rem}
+.node{display:flex;flex-direction:column;gap:.2rem;padding:1.1rem 1.1rem 1.15rem;border:1px solid var(--grid);border-radius:10px;background:var(--panel);position:relative;transition:border-color .15s}
+.node:hover{border-color:var(--signal-dim)}
+.node--cur{border-color:var(--signal);background:var(--panel-2)}
+.nn{font-family:var(--display);font-weight:700;font-size:1.05rem}
+.node--cur .nn{color:var(--signal)}
+.nr{color:var(--muted);font-size:.8rem}
+.nb{position:absolute;top:.9rem;right:.9rem;font-family:var(--mono);font-size:.58rem;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);border:1px solid var(--grid);border-radius:999px;padding:.12rem .55rem}
+.nb--live{color:var(--up);border-color:rgba(52,211,153,.4)}
+footer .wrap{padding-block:2.1rem;display:flex;flex-wrap:wrap;gap:.6rem 1.5rem;justify-content:space-between;align-items:center;color:var(--muted);font-size:.85rem}
+footer .brand .nm{font-size:1rem}
+footer .brand svg{width:22px;height:22px}
+footer .mono{font-family:var(--mono);font-size:.7rem;letter-spacing:.06em;text-transform:uppercase}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="ticker"><div class="wrap"><div class="row">
+  <span><b>UF</b> 38.420 <span class="up">▲</span></span>
+  <span><b>USD/CLP</b> 945,3</span>
+  <span><b>Cámara CLP</b> 5,25%</span>
+  <span><b>SOFR</b> 4,58%</span>
+  <span class="sig">●</span>
+  <span>Suite Trade · Plataforma RFQ</span>
+</div></div></div>
+
+<header class="topbar"><div class="wrap">
+  <div class="brand"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M14,31 C36,33 54,46 69,50" fill="none" stroke="#5A6775" stroke-width="7" stroke-linecap="round"/><path d="M14,69 C36,67 54,54 69,50" fill="none" stroke="#2FD9E8" stroke-width="7" stroke-linecap="round"/><circle cx="72" cy="50" r="11" fill="#2FD9E8"/></svg><span class="nm">Trade<span class="op">FX</span></span></div>
+  <nav class="apps" aria-label="Ecosistema"><a href="https://segundaopinion.cl" title="SegundaOpinión — matriz">SegundaOpinión</a><a href="https://tradeai.cl" title="TradeAI — terminal de opciones FX">TradeAI<span class="ext">↗</span></a><span class="here">TradeFX</span></nav>
+</div></header>
+
+<section class="hero"><div class="wrap">
+  <p class="eyebrow">Suite Trade · RFQ</p>
+  <h1>Cotización FX <em>por RFQ.</em></h1>
+  <p class="lede">Flujo request-for-quote para FX: solicitud de cotizaciones, comparación de precios y captura de operaciones, integrada al blotter de la suite.</p>
+  <div class="status"><span class="pulse"></span>En construcción</div>
+  <div class="actions">
+    <a class="btn" href="mailto:contacto@segundaopinion.cl?subject=TradeFX">Avísenme al lanzar <span class="arr">→</span></a>
+    <a class="btn ghost" href="https://tradeai.cl" target="_blank" rel="noopener">Ver TradeAI ↗</a>
+  </div>
+</div></section>
+
+<section class="method band"><div class="wrap">
+  <p class="eyebrow">Qué hará</p>
+  <div class="grid3">
+    <div class="item"><div class="num">01</div><h3>Request-for-quote</h3><p>Solicita cotizaciones de spot, forward y swap FX en un flujo.</p><div class="tag">RFQ</div></div>
+    <div class="item"><div class="num">02</div><h3>Comparación de precios</h3><p>Mejor bid/offer lado a lado, con spread y hora.</p><div class="tag">comparación</div></div>
+    <div class="item"><div class="num">03</div><h3>Captura de operaciones</h3><p>La operación aceptada pasa directo al blotter.</p><div class="tag">captura</div></div>
+  </div>
+</div></section>
+
+<section class="feat band"><div class="wrap">
+  <div>
+    <p class="eyebrow">Vista previa</p>
+    <h2>Plataforma RFQ.</h2>
+    <p class="lede2">Un adelanto del tipo de datos que manejará TradeFX dentro de la suite. Cifras ilustrativas.</p>
+  </div>
+  <div class="panel">
+    <div class="lbl">RFQ USD/CLP Fwd 3M · ejemplo</div>
+    <div class="r"><span class="m">Spot</span><span class="v m">945,30</span></div>
+    <div class="r"><span class="m">Fwd 3M</span><span class="v sig">951,80</span></div>
+    <div class="r"><span class="m">Mejor bid</span><span class="v up">951,60</span></div>
+    <div class="r"><span class="m">Mejor offer</span><span class="v dn">952,00</span></div>
+  </div>
+</div></section>
+
+<section class="suite band"><div class="wrap">
+  <p class="eyebrow">La suite Trade</p>
+  <div class="grid5">
+    <a class="node" href="https://tradeai.cl" target="_blank" rel="noopener"><span class="nn">TradeAI</span><span class="nr">Deal capture · opciones FX</span><span class="nb nb--live">live</span></a>
+      <div class="node"><span class="nn">TradeVol</span><span class="nr">Opciones y volatilidad</span><span class="nb">pronto</span></div>
+      <div class="node"><span class="nn">TradeSwap</span><span class="nr">Gestión de swaps</span><span class="nb">pronto</span></div>
+      <div class="node node--cur"><span class="nn">TradeFX</span><span class="nr">Plataforma RFQ</span><span class="nb">pronto</span></div>
+      <div class="node"><span class="nn">TradeBlotter</span><span class="nr">Blotter de la suite</span><span class="nb">pronto</span></div>
+  </div>
+</div></section>
+
+<footer class="band"><div class="wrap">
+  <div class="brand"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M14,31 C36,33 54,46 69,50" fill="none" stroke="#5A6775" stroke-width="7" stroke-linecap="round"/><path d="M14,69 C36,67 54,54 69,50" fill="none" stroke="#2FD9E8" stroke-width="7" stroke-linecap="round"/><circle cx="72" cy="50" r="11" fill="#2FD9E8"/></svg><span class="nm">Segunda<span class="op">Opinión</span></span></div>
+  <div class="mono">© <span id="y"></span> · TradeFX · Suite Trade · tradefx.cl</div>
+</div></footer>
+<script>document.getElementById("y").textContent=new Date().getFullYear();</script>
+</body>
+</html>
