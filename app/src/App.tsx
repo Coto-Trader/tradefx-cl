@@ -3,6 +3,7 @@ import { MockFeed } from "./engine/feed";
 import { OPERATIONS, SCENARIOS, isMarketOpen } from "./engine/model";
 import { priceQuote } from "./engine/pricing";
 import { BroadcastDealBus, Deal, DealSide, deskNetByPair, getTraderId, newDealId } from "./engine/deals";
+import { BroadcastChatBus, ChatMsg, newMsgId, threadsForDesk } from "./engine/chat";
 import { CLIENTS, PAIRS, POINTS, SEEDS } from "./state/defaults";
 
 const TENORS = [
@@ -30,13 +31,18 @@ export function App() {
 
   const feedRef = useRef<MockFeed>(new MockFeed(SEEDS));
   const busRef = useRef<BroadcastDealBus>(new BroadcastDealBus());
+  const chatBusRef = useRef<BroadcastChatBus>(new BroadcastChatBus());
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [selThread, setSelThread] = useState("A");
   const [, tick] = useReducer((x) => x + 1, 0);
 
   useEffect(() => {
     const id = setInterval(() => { feedRef.current.step(); tick(); }, 700);
     const unsub = busRef.current.subscribe(setDeals);
-    return () => { clearInterval(id); unsub(); };
+    const unsubChat = chatBusRef.current.subscribe(setChatMsgs);
+    return () => { clearInterval(id); unsub(); unsubChat(); };
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); }, [toast]);
 
@@ -45,6 +51,12 @@ export function App() {
   const client = CLIENTS.find((c) => c.id === clientId)!;
   const scenario = SCENARIOS.find((s) => s.id === scenarioId)!;
   const open = isMarketOpen(pair);
+
+  useEffect(() => {
+    const threadId = role === "trader" ? selThread : client.id;
+    chatBusRef.current.markRead(threadId, role === "trader" ? "desk" : "client");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role, selThread, client.id, chatMsgs.length]);
 
   const quote = useMemo(
     () => priceQuote({ pair, op, scenario, client, feed: feedRef.current, points: POINTS, tenorDays, amountUSD: amount }),
@@ -84,7 +96,10 @@ export function App() {
   }
   function acknowledge(id: string) {
     const d = deals.find((x) => x.id === id);
-    if (d) busRef.current.publish({ ...d, status: "confirmed", acknowledgedByTrader: true, byTrader: traderName });
+    if (d) {
+      busRef.current.publish({ ...d, status: "confirmed", acknowledgedByTrader: true, byTrader: traderName });
+      postSystem(d.clientId, `✓ ${d.operation}${d.tenorLabel ? " " + d.tenorLabel : ""} · ${d.side === "client_buys" ? "compra" : "venta"} ${fmtAmt(d.amountBase)} ${d.base} @ ${d.rate.toFixed(decimalsOf(d.pair))} — confirmado`);
+    }
   }
   // --- RFQ ---
   function claim(id: string) {
@@ -103,11 +118,30 @@ export function App() {
   }
   function clientAccept(id: string) {
     const d = deals.find((x) => x.id === id);
-    if (d && d.status === "quoted") busRef.current.publish({ ...d, status: "confirmed", rate: d.quotedRate!, acknowledgedByTrader: true });
+    if (d && d.status === "quoted") {
+      busRef.current.publish({ ...d, status: "confirmed", rate: d.quotedRate!, acknowledgedByTrader: true });
+      postSystem(d.clientId, `✓ RFQ ${d.operation} · ${d.side === "client_buys" ? "compra" : "venta"} ${fmtAmt(d.amountBase)} ${d.base} @ ${d.quotedRate!.toFixed(decimalsOf(d.pair))} — confirmado con ${d.claimedByName ?? "la mesa"}`);
+    }
   }
   function clientReject(id: string) {
     const d = deals.find((x) => x.id === id);
     if (d && (d.status === "quoted" || d.status === "pending_rfq" || d.status === "claimed")) busRef.current.publish({ ...d, status: "rejected" });
+  }
+  // --- TradeChat ---
+  function postSystem(clientId: string, text: string) {
+    chatBusRef.current.publish({ id: newMsgId(), ts: Date.now(), clientId, from: "desk", fromName: "Sistema", text, system: true });
+  }
+  function sendChat() {
+    const text = chatInput.trim();
+    if (!text) return;
+    const threadId = role === "trader" ? selThread : client.id;
+    chatBusRef.current.publish({
+      id: newMsgId(), ts: Date.now(), clientId: threadId,
+      from: role === "trader" ? "desk" : "client",
+      fromName: role === "trader" ? traderName : (CLIENTS.find((c) => c.id === threadId)?.name ?? threadId),
+      text,
+    });
+    setChatInput("");
   }
 
   // ventana no-cerrable del trader
@@ -127,6 +161,32 @@ export function App() {
   const canHit = quote.tradable && !op.twoLegs && (quote.route === "autotrade" || quote.route === "rfq");
   const hitLabel = (side: DealSide) => quote.route === "rfq" ? "Pedir precio" : side === "client_buys" ? `Comprar ${pair.base} ▸` : `◂ Vender ${pair.base}`;
   const onHit = (side: DealSide) => quote.route === "rfq" ? requestRFQ(side) : execute(side);
+
+  // --- chat render ---
+  const chatThread = role === "trader" ? selThread : client.id;
+  const threadMsgs = chatMsgs.filter((m) => m.clientId === chatThread).sort((a, b) => a.ts - b.ts);
+  const deskThreads = role === "trader" ? threadsForDesk(chatMsgs) : [];
+  const totalUnread = deskThreads.reduce((s, t) => s + t.unread, 0);
+  const isMine = (m: ChatMsg) => (role === "trader" && m.from === "desk" && !m.system) || (role === "cliente" && m.from === "client");
+  const convNode = (
+    <div className="conv">
+      <div className="msgs">
+        {threadMsgs.length === 0 ? (
+          <div className="chat-empty">Sin mensajes. Escribí para {role === "trader" ? "responder al cliente" : "hablar con la mesa"}.</div>
+        ) : threadMsgs.map((m) => (
+          <div key={m.id} className={`bubble ${m.system ? "sys" : isMine(m) ? "me" : "them"}`}>
+            {!m.system && <div className="who">{m.fromName}</div>}
+            <span>{m.text}</span>
+          </div>
+        ))}
+      </div>
+      <div className="chat-input">
+        <input value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
+          placeholder={role === "trader" ? `Responder a ${CLIENTS.find((c) => c.id === selThread)?.name ?? ""}` : "Mensaje a la mesa…"} />
+        <button className="btn primary" onClick={sendChat}>Enviar</button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -324,9 +384,34 @@ export function App() {
           </div>
         </div>
 
+        <div className="panel">
+          <div className="panel-head">
+            <h2>TradeChat</h2>
+            <span className="hint">{role === "cliente" ? "con la Mesa" : "hilos por cliente"}</span>
+            <span className="spacer" />
+            {role === "trader" && totalUnread > 0 && <span className="badge closed">{totalUnread} sin leer</span>}
+          </div>
+          <div className="panel-body">
+            {role === "trader" ? (
+              <div className="chat-grid">
+                <div className="threads">
+                  {deskThreads.length === 0 ? <div className="chat-empty" style={{ padding: 14 }}>sin hilos</div> :
+                    deskThreads.map((t) => (
+                      <div key={t.clientId} className={`thread ${selThread === t.clientId ? "on" : ""}`} onClick={() => setSelThread(t.clientId)}>
+                        <span className="nm">{CLIENTS.find((c) => c.id === t.clientId)?.name ?? t.clientId}</span>
+                        {t.unread > 0 && <span className="unread">{t.unread}</span>}
+                      </div>
+                    ))}
+                </div>
+                {convNode}
+              </div>
+            ) : convNode}
+          </div>
+        </div>
+
         <div className="notice">
-          <b>Slices 3–4 (este):</b> autotrade + <b>ventana no-cerrable</b> del trader + <b>confirmación doble</b>; y <b>RFQ completo</b> (cliente pide → mesa toma con lock → da precio → cliente acepta/rechaza). Sync por BroadcastChannel. &nbsp;
-          <b>Siguiente:</b> TradeChat, ejecución FX swap, feed real (BBG/Datatec) y Supabase.
+          <b>Slices 3–5 (este):</b> autotrade + <b>ventana no-cerrable</b>, <b>RFQ completo</b> (claim/lock + cotización + accept/reject), y <b>TradeChat</b> cliente↔mesa (con aviso de confirmación). Sync por BroadcastChannel. &nbsp;
+          <b>Siguiente:</b> ejecución FX swap, feed real (BBG/Datatec) y Supabase.
         </div>
       </div>
 

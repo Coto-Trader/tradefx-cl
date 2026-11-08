@@ -183,7 +183,29 @@ table.tbl td.num, table.tbl th.num { text-align: right; }
 .net .cell { font-family: var(--font-mono); font-size: 11px; }
 .net .cell b { color: var(--text); }
 
+/* TradeChat ------------------------------------------------- */
+.chat-grid { display: grid; grid-template-columns: 220px 1fr; gap: 12px; }
+.threads { border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); overflow: hidden; max-height: 340px; overflow-y: auto; }
+.thread { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; border-bottom: 1px solid var(--border-subtle); font-family: var(--font-mono); font-size: 12px; }
+.thread:hover { background: var(--panel-2); }
+.thread.on { background: var(--panel-3); border-left: 2px solid var(--signal); }
+.thread .nm { flex: 1; color: var(--text); }
+.thread .unread { background: var(--down); color: #fff; font-size: 10px; min-width: 18px; height: 18px; border-radius: 999px; display: flex; align-items: center; justify-content: center; padding: 0 5px; }
+.conv { display: flex; flex-direction: column; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); min-height: 260px; }
+.msgs { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 7px; overflow-y: auto; max-height: 300px; }
+.bubble { max-width: 76%; padding: 7px 11px; border-radius: 10px; font-size: 13px; line-height: 1.4; }
+.bubble .who { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px; }
+.bubble.them { align-self: flex-start; background: var(--panel-2); border: 1px solid var(--border-strong); border-bottom-left-radius: 3px; }
+.bubble.me { align-self: flex-end; background: var(--signal-deep); color: #04171a; border-bottom-right-radius: 3px; }
+.bubble.me .who { color: #04313a; }
+.bubble.sys { align-self: center; background: transparent; border: 1px dashed var(--border-strong); color: var(--up); font-family: var(--font-mono); font-size: 11px; }
+.bubble .t { font-size: 9px; opacity: .6; margin-left: 8px; }
+.chat-input { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--border-subtle); }
+.chat-input input { flex: 1; }
+.chat-empty { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; padding: 24px; text-align: center; margin: auto; }
+
 @media (max-width: 720px) {
   .grid.c4, .grid.c5 { grid-template-columns: repeat(2, 1fr); }
   .tile .px { font-size: 26px; } .tile .px .big { font-size: 34px; }
+  .chat-grid { grid-template-columns: 1fr; }
 }
