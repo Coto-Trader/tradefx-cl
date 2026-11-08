@@ -4,7 +4,7 @@
 
 export type DealSide = "client_buys" | "client_sells";
 export type DealRouteKind = "autotrade" | "rfq";
-export type DealStatus = "executed" | "pending_rfq" | "confirmed" | "rejected";
+export type DealStatus = "executed" | "pending_rfq" | "claimed" | "quoted" | "confirmed" | "rejected";
 
 export interface Deal {
   id: string;
@@ -24,6 +24,10 @@ export interface Deal {
   status: DealStatus;
   acknowledgedByTrader?: boolean;
   byTrader?: string;
+  // RFQ
+  claimedBy?: string;      // id del trader que tomó el RFQ (lock)
+  claimedByName?: string;
+  quotedRate?: number;     // precio ofrecido por la mesa
 }
 
 export interface DealBus {
@@ -79,11 +83,21 @@ export function newDealId(): string {
   return "D" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
+/** Identidad de trader por VENTANA (sessionStorage): así dos pestañas de trader
+ *  son dos traders distintos y el claim del primero bloquea al resto. */
+export function getTraderId(): string {
+  try {
+    let id = sessionStorage.getItem("tradefx.traderId");
+    if (!id) { id = "T" + Math.random().toString(36).slice(2, 5).toUpperCase(); sessionStorage.setItem("tradefx.traderId", id); }
+    return id;
+  } catch { return "T" + Math.random().toString(36).slice(2, 5).toUpperCase(); }
+}
+
 /** Posición neta por par (base firmado): cliente compra base ⇒ mesa queda corta base. */
 export function deskNetByPair(deals: Deal[]): Record<string, number> {
   const net: Record<string, number> = {};
   for (const d of deals) {
-    if (d.status === "rejected" || d.status === "pending_rfq") continue;
+    if (d.status !== "executed" && d.status !== "confirmed") continue;
     const sign = d.side === "client_buys" ? -1 : +1; // mesa: corta si el cliente compra
     net[d.pair] = (net[d.pair] ?? 0) + sign * d.amountBase;
   }

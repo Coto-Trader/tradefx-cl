@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { MockFeed } from "./engine/feed";
 import { OPERATIONS, SCENARIOS, isMarketOpen } from "./engine/model";
 import { priceQuote } from "./engine/pricing";
-import { BroadcastDealBus, Deal, DealSide, deskNetByPair, newDealId } from "./engine/deals";
+import { BroadcastDealBus, Deal, DealSide, deskNetByPair, getTraderId, newDealId } from "./engine/deals";
 import { CLIENTS, PAIRS, POINTS, SEEDS } from "./state/defaults";
 
 const TENORS = [
@@ -24,6 +24,9 @@ export function App() {
   const [tenorDays, setTenorDays] = useState(30);
   const [amount, setAmount] = useState(500_000);
   const [toast, setToast] = useState<string | null>(null);
+  const [quoteIn, setQuoteIn] = useState<Record<string, string>>({});
+  const traderId = useRef(getTraderId()).current;
+  const traderName = "Trader " + traderId;
 
   const feedRef = useRef<MockFeed>(new MockFeed(SEEDS));
   const busRef = useRef<BroadcastDealBus>(new BroadcastDealBus());
@@ -77,11 +80,34 @@ export function App() {
       amountBase: amount, rate: 0, valueDateISO: quote.valueDateISO, scenario: scenario.label,
       route: "rfq", status: "pending_rfq",
     });
-    setToast("RFQ enviado a la mesa (cotización = próximo slice).");
+    setToast("RFQ enviado a la mesa. Mirá 'Mis RFQ' para el precio.");
   }
   function acknowledge(id: string) {
     const d = deals.find((x) => x.id === id);
-    if (d) busRef.current.publish({ ...d, status: "confirmed", acknowledgedByTrader: true, byTrader: "Trader 1" });
+    if (d) busRef.current.publish({ ...d, status: "confirmed", acknowledgedByTrader: true, byTrader: traderName });
+  }
+  // --- RFQ ---
+  function claim(id: string) {
+    const d = deals.find((x) => x.id === id);
+    if (d && d.status === "pending_rfq") {
+      busRef.current.publish({ ...d, status: "claimed", claimedBy: traderId, claimedByName: traderName });
+      const mid = feedRef.current.mid(d.pair);
+      if (mid != null) setQuoteIn((q) => ({ ...q, [id]: (d.side === "client_buys" ? mid + 0.3 : mid - 0.3).toFixed(decimalsOf(d.pair)) }));
+    }
+  }
+  function giveQuote(id: string) {
+    const d = deals.find((x) => x.id === id);
+    const r = parseFloat(quoteIn[id] ?? "");
+    if (d && d.status === "claimed" && d.claimedBy === traderId && isFinite(r) && r > 0)
+      busRef.current.publish({ ...d, status: "quoted", quotedRate: r });
+  }
+  function clientAccept(id: string) {
+    const d = deals.find((x) => x.id === id);
+    if (d && d.status === "quoted") busRef.current.publish({ ...d, status: "confirmed", rate: d.quotedRate!, acknowledgedByTrader: true });
+  }
+  function clientReject(id: string) {
+    const d = deals.find((x) => x.id === id);
+    if (d && (d.status === "quoted" || d.status === "pending_rfq" || d.status === "claimed")) busRef.current.publish({ ...d, status: "rejected" });
   }
 
   // ventana no-cerrable del trader
@@ -89,7 +115,9 @@ export function App() {
     ? deals.filter((d) => d.route === "autotrade" && d.status === "executed" && !d.acknowledgedByTrader).sort((a, b) => a.ts - b.ts)
     : [];
   const ack = pendingAck[0];
-  const rfqInbox = role === "trader" ? deals.filter((d) => d.status === "pending_rfq") : [];
+  const rfqActive = (d: Deal) => d.route === "rfq" && (d.status === "pending_rfq" || d.status === "claimed" || d.status === "quoted");
+  const rfqInbox = role === "trader" ? deals.filter(rfqActive).sort((a, b) => a.ts - b.ts) : [];
+  const clientRfqs = role === "cliente" ? deals.filter((d) => rfqActive(d) && d.clientId === client.id).sort((a, b) => b.ts - a.ts) : [];
 
   // blotter (confirmación doble): trader ve todo; cliente ve lo suyo
   const blotter = (role === "trader" ? deals : deals.filter((d) => d.clientId === client.id))
@@ -113,6 +141,7 @@ export function App() {
           <button className={role === "trader" ? "on" : ""} onClick={() => setRole("trader")}>Trader</button>
           <button className={role === "cliente" ? "on" : ""} onClick={() => setRole("cliente")}>Cliente</button>
         </div>
+        {role === "trader" && <span className="role" title="identidad de trader (por ventana)">{traderId}</span>}
       </div>
 
       <div className="header">
@@ -203,12 +232,67 @@ export function App() {
           </div>
         </div>
 
+        {/* Cliente: mis RFQ (esperar / aceptar / rechazar) */}
+        {role === "cliente" && clientRfqs.length > 0 && (
+          <div className="panel">
+            <div className="panel-head"><h2>Mis RFQ</h2><span className="hint">pediste precio a la mesa</span></div>
+            <div className="panel-body"><table className="tbl">
+              <thead><tr><th>Par · Op</th><th>Lado</th><th className="num">Monto</th><th>Estado</th><th></th></tr></thead>
+              <tbody>{clientRfqs.map((d) => (
+                <tr key={d.id}>
+                  <td className="dim">{d.pair} {d.operation}{d.tenorLabel ? " " + d.tenorLabel : ""}</td>
+                  <td className={d.side === "client_buys" ? "pos" : "neg"}>{d.side === "client_buys" ? "compra" : "vende"}</td>
+                  <td className="num">{fmtAmt(d.amountBase)} {d.base}</td>
+                  <td>
+                    {d.status === "pending_rfq" && <span className="muted">esperando mesa…</span>}
+                    {d.status === "claimed" && <span className="dim">{d.claimedByName} cotizando…</span>}
+                    {d.status === "quoted" && <span className="pos mono">precio {d.quotedRate?.toFixed(decimalsOf(d.pair))}</span>}
+                  </td>
+                  <td className="num">
+                    {d.status === "quoted" ? (
+                      <div className="btn-row" style={{ justifyContent: "flex-end" }}>
+                        <button className="btn primary" onClick={() => clientAccept(d.id)}>Aceptar</button>
+                        <button className="btn" onClick={() => clientReject(d.id)}>Rechazar</button>
+                      </div>
+                    ) : <button className="btn ghost" onClick={() => clientReject(d.id)}>Cancelar</button>}
+                  </td>
+                </tr>
+              ))}</tbody>
+            </table></div>
+          </div>
+        )}
+
+        {/* Trader: bandeja RFQ (tomar / dar precio) */}
         {role === "trader" && rfqInbox.length > 0 && (
           <div className="panel">
-            <div className="panel-head"><h2>RFQ entrantes</h2><span className="hint">cotización = próximo slice</span></div>
-            <div className="panel-body"><table className="tbl"><tbody>
-              {rfqInbox.map((d) => <tr key={d.id}><td>{d.clientName}</td><td className="dim">{d.pair} {d.operation}</td><td className="num">{fmtAmt(d.amountBase)} {d.base}</td><td className="dim">{d.side === "client_buys" ? "compra" : "vende"}</td></tr>)}
-            </tbody></table></div>
+            <div className="panel-head"><h2>RFQ entrantes</h2><span className="hint">el primero que toma, cotiza (lock)</span></div>
+            <div className="panel-body"><table className="tbl">
+              <thead><tr><th>Cliente</th><th>Par · Op</th><th>Lado</th><th className="num">Monto</th><th>Acción</th></tr></thead>
+              <tbody>{rfqInbox.map((d) => {
+                const mine = d.claimedBy === traderId;
+                return (
+                  <tr key={d.id}>
+                    <td>{d.clientName}</td>
+                    <td className="dim">{d.pair} {d.operation}{d.tenorLabel ? " " + d.tenorLabel : ""}</td>
+                    <td className={d.side === "client_buys" ? "pos" : "neg"}>{d.side === "client_buys" ? "compra" : "vende"}</td>
+                    <td className="num">{fmtAmt(d.amountBase)} {d.base}</td>
+                    <td>
+                      {d.status === "pending_rfq" && (
+                        <div className="btn-row"><button className="btn primary" onClick={() => claim(d.id)}>Tomar</button><button className="btn ghost" onClick={() => clientReject(d.id)}>Pasar</button></div>
+                      )}
+                      {d.status === "claimed" && mine && (
+                        <div className="btn-row" style={{ alignItems: "center" }}>
+                          <input style={{ width: 90 }} value={quoteIn[d.id] ?? ""} onChange={(e) => setQuoteIn((q) => ({ ...q, [d.id]: e.target.value }))} />
+                          <button className="btn primary" onClick={() => giveQuote(d.id)}>Dar precio</button>
+                        </div>
+                      )}
+                      {d.status === "claimed" && !mine && <span className="muted">tomado por {d.claimedByName}</span>}
+                      {d.status === "quoted" && <span className="dim">{mine ? "cotizado" : `por ${d.claimedByName}`} @ {d.quotedRate?.toFixed(decimalsOf(d.pair))} — esperando cliente</span>}
+                    </td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
           </div>
         )}
 
@@ -241,8 +325,8 @@ export function App() {
         </div>
 
         <div className="notice">
-          <b>Slice 3 (este):</b> autotrade (cliente pega → cierra), <b>ventana no-cerrable</b> en el trader hasta gestionar, y <b>confirmación doble</b> (blotter en ambas pantallas, sync por BroadcastChannel). &nbsp;
-          <b>Siguiente:</b> RFQ con claim + cotización, FX swap, feed real y Supabase.
+          <b>Slices 3–4 (este):</b> autotrade + <b>ventana no-cerrable</b> del trader + <b>confirmación doble</b>; y <b>RFQ completo</b> (cliente pide → mesa toma con lock → da precio → cliente acepta/rechaza). Sync por BroadcastChannel. &nbsp;
+          <b>Siguiente:</b> TradeChat, ejecución FX swap, feed real (BBG/Datatec) y Supabase.
         </div>
       </div>
 
