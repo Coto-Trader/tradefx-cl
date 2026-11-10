@@ -38,6 +38,8 @@ export function App() {
   const [tenorDays, setTenorDays] = useState(30);
   const [amount, setAmount] = useState(500_000);
   const [synced, setSynced] = useState(false); // USD/CLP sincronizado con el precio real
+  const [deskOpen, setDeskOpen] = useState<boolean>(() => { try { return localStorage.getItem("tradefx.desk") !== "closed"; } catch { return true; } });
+  const setDesk = (o: boolean) => { setDeskOpen(o); try { localStorage.setItem("tradefx.desk", o ? "open" : "closed"); } catch {} try { const ch = new BroadcastChannel("tradefx-desk"); ch.postMessage({ open: o }); ch.close(); } catch {} };
   const [toast, setToast] = useState<string | null>(null);
   const [quoteIn, setQuoteIn] = useState<Record<string, string>>({});
   const traderId = useRef(getTraderId()).current;
@@ -66,6 +68,11 @@ export function App() {
     return () => clearInterval(id);
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => {
+    let ch: BroadcastChannel | null = null;
+    try { ch = new BroadcastChannel("tradefx-desk"); ch.onmessage = (e) => { if (typeof (e.data || {}).open === "boolean") setDeskOpen(e.data.open); }; } catch {}
+    return () => { try { ch?.close(); } catch {} };
+  }, []);
 
   const pair = PAIRS.find((p) => p.id === pairId)!;
   const op = OPERATIONS.find((o) => o.id === opId)!;
@@ -179,7 +186,7 @@ export function App() {
     .filter((d) => d.status === "executed" || d.status === "confirmed").slice(0, 12);
   const net = deskNetByPair(deals);
 
-  const canHit = quote.tradable && !op.twoLegs && (quote.route === "autotrade" || quote.route === "rfq") && (pairId !== "USDCLP" || synced);
+  const canHit = quote.tradable && !op.twoLegs && (quote.route === "autotrade" || quote.route === "rfq") && (pairId !== "USDCLP" || synced) && deskOpen;
   const hitLabel = (side: DealSide) => quote.route === "rfq" ? "Pedir precio" : side === "client_buys" ? `Comprar ${pair.base} ▸` : `◂ Vender ${pair.base}`;
   const onHit = (side: DealSide) => quote.route === "rfq" ? requestRFQ(side) : execute(side);
 
@@ -240,6 +247,8 @@ export function App() {
             <h2>Condiciones</h2><span className="hint">{role === "cliente" ? "vista cliente" : "vista trader"}</span>
             <span className="spacer" />
             <span className={`badge ${open ? "live" : "closed"}`}>mercado {open ? "abierto" : "cerrado"}</span>
+            <span className={`badge ${deskOpen ? "live" : "closed"}`} style={{ marginLeft: 6 }}>mesa {deskOpen ? "abierta" : "cerrada"}</span>
+            {role === "trader" && <button className={"btn" + (deskOpen ? " danger" : " primary")} style={{ marginLeft: 8 }} onClick={() => setDesk(!deskOpen)}>{deskOpen ? "Cerrar mesa" : "Abrir mesa"}</button>}
           </div>
           <div className="panel-body">
             <div className="grid c4" style={{ marginBottom: 12 }}>
@@ -302,6 +311,7 @@ export function App() {
               </div>
             )}
             {quote.note && quote.tradable && <div className="notice" style={{ marginTop: 12 }}>{quote.note}</div>}
+            {!deskOpen && <div className="notice" style={{ marginTop: 12, color: "#f2574c", borderColor: "#f2574c66" }}>🔒 <b>Mesa cerrada</b> por el trader — no se puede operar. Alguien autorizado debe abrir la mesa para habilitar la ejecución.</div>}
             {!synced && pairId === "USDCLP" && <div className="notice" style={{ marginTop: 12, color: "#fbbf24", borderColor: "#fbbf2466" }}>⏳ Sincronizando precio real USD/CLP… la ejecución está <b>bloqueada</b> hasta confirmar el precio de mercado (protege contra pegar a un precio desactualizado).</div>}
             {role === "trader" && !op.twoLegs && quote.tradable && <div className="notice" style={{ marginTop: 12 }}>Los botones de pegar están en la <b>vista cliente</b>. Cambiá el rol arriba (o abrí otra ventana como Cliente) para disparar un autotrade.</div>}
 
