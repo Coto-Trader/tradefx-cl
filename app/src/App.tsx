@@ -42,6 +42,7 @@ export function App() {
   const setDesk = (o: boolean) => { setDeskOpen(o); try { localStorage.setItem("tradefx.desk", o ? "open" : "closed"); } catch {} try { const ch = new BroadcastChannel("tradefx-desk"); ch.postMessage({ open: o }); ch.close(); } catch {} };
   const [toast, setToast] = useState<string | null>(null);
   const [quoteIn, setQuoteIn] = useState<Record<string, string>>({});
+  const [spreadOvr, setSpreadOvr] = useState<Record<string, number>>({}); // quick update del spread cliente (±/lado) por id
   const traderId = useRef(getTraderId()).current;
   const traderName = "Trader " + traderId;
 
@@ -76,7 +77,11 @@ export function App() {
 
   const pair = PAIRS.find((p) => p.id === pairId)!;
   const op = OPERATIONS.find((o) => o.id === opId)!;
-  const client = CLIENTS.find((c) => c.id === clientId)!;
+  const client = useMemo(() => {
+    const base = CLIENTS.find((c) => c.id === clientId)!;
+    const ovr = spreadOvr[clientId];
+    return ovr != null ? { ...base, spreadSpot: ovr } : base;
+  }, [clientId, spreadOvr]);
   const scenario = SCENARIOS.find((s) => s.id === scenarioId)!;
   const open = isMarketOpen(pair);
 
@@ -268,6 +273,17 @@ export function App() {
                   <div className="seg">{TENORS.map((t) => <button key={t.days} className={tenorDays === t.days ? "on" : ""} onClick={() => setTenorDays(t.days)}>{t.label}</button>)}</div></label>
               ) : <div />}
             </div>
+            {role === "trader" && (
+              <label className="field" style={{ marginTop: 12 }}><span className="lbl">Spread cliente (± por lado · quick update)</span>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="number" step={0.5} min={0} value={client.spreadSpot}
+                    onChange={(e) => setSpreadOvr((s) => ({ ...s, [clientId]: Math.max(0, parseFloat(e.target.value || "0")) }))}
+                    style={{ maxWidth: 140 }} />
+                  <span className="lbl" style={{ margin: 0 }}>total mesa ± {(client.spreadSpot * 2).toFixed(pair.decimals)} ({pair.quote}) · + escenario</span>
+                  {spreadOvr[clientId] != null && <button className="btn" onClick={() => setSpreadOvr((s) => { const n = { ...s }; delete n[clientId]; return n; })}>reset</button>}
+                </div>
+              </label>
+            )}
             {role === "trader" && (
               <label className="field" style={{ marginTop: 12 }}><span className="lbl">Escenario (lever del trader)</span>
                 <div className="seg">{SCENARIOS.map((s) => <button key={s.id} className={scenarioId === s.id ? "on" : ""} onClick={() => setScenarioId(s.id)}>{s.label}</button>)}</div></label>
