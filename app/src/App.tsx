@@ -14,6 +14,19 @@ const ROUTE_LABEL: Record<string, string> = {
   autotrade: "AUTOTRADE", rfq: "RFQ", referential: "REFERENCIAL", blocked: "BLOQUEADO", market_closed: "CERRADO",
 };
 const fmtAmt = (n: number) => n.toLocaleString("es-CL", { maximumFractionDigits: 0 });
+
+// Fuente única de índices de la suite (tradeai.cl/indices/feed.js)
+function loadIndices(): Promise<any> {
+  const w = window as any;
+  if (w.TAIIndices) return w.TAIIndices.get();
+  return new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://tradeai.cl/indices/feed.js";
+    s.onload = () => (w.TAIIndices ? w.TAIIndices.get().then(resolve) : resolve(null));
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+}
 const decimalsOf = (pairId: string) => PAIRS.find((p) => p.id === pairId)?.decimals ?? 2;
 
 export function App() {
@@ -43,6 +56,10 @@ export function App() {
     const unsub = busRef.current.subscribe(setDeals);
     const unsubChat = chatBusRef.current.subscribe(setChatMsgs);
     return () => { clearInterval(id); unsub(); unsubChat(); };
+  }, []);
+  // USD/CLP real desde la fuente única de la suite (fallback al seed)
+  useEffect(() => {
+    loadIndices().then((x) => { if (x && x.usdclp) { feedRef.current.setMid("USDCLP", x.usdclp); tick(); } });
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); }, [toast]);
 

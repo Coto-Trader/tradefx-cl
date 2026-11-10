@@ -32,6 +32,7 @@ export class MockFeed implements PriceFeed {
   source() { return "MOCK"; }
   pairs() { return [...this.st.keys()]; }
   mid(pair: string) { return this.st.get(pair)?.mid ?? null; }
+  setMid(pair: string, mid: number) { const s = this.st.get(pair); if (s) s.mid = mid; else this.st.set(pair, { mid, vol: 0.12, drift: 0 }); }
 
   step(): Tick[] {
     const ts = Date.now();
