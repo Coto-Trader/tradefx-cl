@@ -301,7 +301,7 @@ export function App() {
                   <div className="sub">vta {quote.valueDateISO}</div>
                   <div className="act"><button className="btn" disabled={!canHit || role !== "cliente"} onClick={() => onHit("client_sells")}>{hitLabel("client_sells")}</button></div>
                 </div>
-                <div className="mid-chip"><div className="k">Mid</div><div className="v">{quote.mid?.toFixed(pair.decimals)}</div><div className="spr">spread {(quote.offer! - quote.bid!).toFixed(pair.decimals)}</div></div>
+                <div className="mid-chip"><div className="k">Mid</div><div className="v">{(((quote.bid ?? 0) + (quote.offer ?? 0)) / 2).toFixed(pair.decimals)}</div><div className="spr">spread {(quote.offer! - quote.bid!).toFixed(pair.decimals)}</div></div>
                 <div className={`tile offer ${offCls}`}>
                   <div className="side">Offer · mesa vende {pair.base}</div>
                   <div className="px">{px(quote.offer!)}</div>
