@@ -15,7 +15,7 @@ export const PAIRS: Pair[] = [
 
 // Semillas del MockFeed (mid + volatilidad por tick)
 export const SEEDS: Record<string, { mid: number; vol: number; drift?: number }> = {
-  USDCLP: { mid: 945.30, vol: 0.12 },
+  USDCLP: { mid: 969.80, vol: 0.12 },
   EURUSD: { mid: 1.08500, vol: 0.00030 },
 };
 

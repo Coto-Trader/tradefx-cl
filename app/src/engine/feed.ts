@@ -22,6 +22,7 @@ interface MockState { mid: number; vol: number; drift: number; }
 /** Mid simulado por random-walk alrededor de una semilla. Siempre disponible. */
 export class MockFeed implements PriceFeed {
   private st = new Map<string, MockState>();
+  private real = new Set<string>(); // pares con feed real: NO se random-walkean
 
   constructor(seeds: Record<string, { mid: number; vol: number; drift?: number }>) {
     for (const [p, s] of Object.entries(seeds)) {
@@ -32,12 +33,13 @@ export class MockFeed implements PriceFeed {
   source() { return "MOCK"; }
   pairs() { return [...this.st.keys()]; }
   mid(pair: string) { return this.st.get(pair)?.mid ?? null; }
-  setMid(pair: string, mid: number) { const s = this.st.get(pair); if (s) s.mid = mid; else this.st.set(pair, { mid, vol: 0.12, drift: 0 }); }
+  setMid(pair: string, mid: number) { const s = this.st.get(pair); if (s) s.mid = mid; else this.st.set(pair, { mid, vol: 0.12, drift: 0 }); this.real.add(pair); }
 
   step(): Tick[] {
     const ts = Date.now();
     const out: Tick[] = [];
     for (const [pair, s] of this.st) {
+      if (this.real.has(pair)) { out.push({ pair, mid: s.mid, ts }); continue; } // real: queda fijo hasta el próximo dato real
       const shock = (Math.random() - 0.5) * 2 * s.vol + s.drift;
       s.mid = Math.max(1e-6, s.mid + shock);
       out.push({ pair, mid: s.mid, ts });

@@ -57,9 +57,12 @@ export function App() {
     const unsubChat = chatBusRef.current.subscribe(setChatMsgs);
     return () => { clearInterval(id); unsub(); unsubChat(); };
   }, []);
-  // USD/CLP real desde la fuente única de la suite (fallback al seed)
+  // USD/CLP real desde la fuente única de la suite (re-consulta cada 30s; fallback al seed)
   useEffect(() => {
-    loadIndices().then((x) => { if (x && x.usdclp) { feedRef.current.setMid("USDCLP", x.usdclp); tick(); } });
+    const apply = () => loadIndices().then((x) => { if (x && x.usdclp) { feedRef.current.setMid("USDCLP", x.usdclp); tick(); } });
+    apply();
+    const id = setInterval(apply, 30000);
+    return () => clearInterval(id);
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2600); return () => clearTimeout(t); }, [toast]);
 
