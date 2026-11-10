@@ -37,6 +37,7 @@ export function App() {
   const [scenarioId, setScenarioId] = useState("NORMAL");
   const [tenorDays, setTenorDays] = useState(30);
   const [amount, setAmount] = useState(500_000);
+  const [synced, setSynced] = useState(false); // USD/CLP sincronizado con el precio real
   const [toast, setToast] = useState<string | null>(null);
   const [quoteIn, setQuoteIn] = useState<Record<string, string>>({});
   const traderId = useRef(getTraderId()).current;
@@ -59,7 +60,7 @@ export function App() {
   }, []);
   // USD/CLP real desde la fuente única de la suite (re-consulta cada 30s; fallback al seed)
   useEffect(() => {
-    const apply = () => loadIndices().then((x) => { if (x && x.usdclp) { feedRef.current.setMid("USDCLP", x.usdclp); tick(); } });
+    const apply = () => loadIndices().then((x) => { if (x && x.usdclp) { feedRef.current.setMid("USDCLP", x.usdclp); setSynced(true); tick(); } });
     apply();
     const id = setInterval(apply, 30000);
     return () => clearInterval(id);
@@ -178,7 +179,7 @@ export function App() {
     .filter((d) => d.status === "executed" || d.status === "confirmed").slice(0, 12);
   const net = deskNetByPair(deals);
 
-  const canHit = quote.tradable && !op.twoLegs && (quote.route === "autotrade" || quote.route === "rfq");
+  const canHit = quote.tradable && !op.twoLegs && (quote.route === "autotrade" || quote.route === "rfq") && (pairId !== "USDCLP" || synced);
   const hitLabel = (side: DealSide) => quote.route === "rfq" ? "Pedir precio" : side === "client_buys" ? `Comprar ${pair.base} ▸` : `◂ Vender ${pair.base}`;
   const onHit = (side: DealSide) => quote.route === "rfq" ? requestRFQ(side) : execute(side);
 
@@ -301,6 +302,7 @@ export function App() {
               </div>
             )}
             {quote.note && quote.tradable && <div className="notice" style={{ marginTop: 12 }}>{quote.note}</div>}
+            {!synced && pairId === "USDCLP" && <div className="notice" style={{ marginTop: 12, color: "#fbbf24", borderColor: "#fbbf2466" }}>⏳ Sincronizando precio real USD/CLP… la ejecución está <b>bloqueada</b> hasta confirmar el precio de mercado (protege contra pegar a un precio desactualizado).</div>}
             {role === "trader" && !op.twoLegs && quote.tradable && <div className="notice" style={{ marginTop: 12 }}>Los botones de pegar están en la <b>vista cliente</b>. Cambiá el rol arriba (o abrí otra ventana como Cliente) para disparar un autotrade.</div>}
 
             {quote.components.length > 0 && (
